@@ -1,0 +1,17 @@
+services:
+  tokenizer:
+    image: train-gpt-tokenizer:latest
+    build:
+      context: .
+      dockerfile: tokenizer/Dockerfile
+    volumes:
+      - ./data:/data
+
+  trainer:
+    image: train-gpt:latest
+    build:
+      context: ./build-nanogpt
+      dockerfile: Dockerfile
+    volumes:
+      - ./data:/data:ro
+      - ./checkpoints:/checkpoints
