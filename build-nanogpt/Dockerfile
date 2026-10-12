@@ -6,7 +6,7 @@ WORKDIR /app
 
 # Install the CPU-only PyTorch wheel so the image does not include CUDA libraries.
 RUN pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu torch \
-    && pip install --no-cache-dir numpy tiktoken
+    && pip install --no-cache-dir numpy python-dotenv
 
 COPY . /app
 RUN chmod +x /app/entrypoint.sh
