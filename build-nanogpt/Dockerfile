@@ -1,5 +1,7 @@
 FROM python:3.11-slim
 
+LABEL org.opencontainers.image.title="train GPT"
+
 WORKDIR /app
 
 # Install the CPU-only PyTorch wheel so the image does not include CUDA libraries.
