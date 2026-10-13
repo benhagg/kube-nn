@@ -1,0 +1,37 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ printf "%s-tokenize-%s" .Release.Name (printf "%s|%s" (include "nanogpt.partitionKey" .) .Values.imagePullPolicy | sha256sum | trunc 12) | trunc 63 | trimSuffix "-" }}
+  labels:
+    app: nanogpt-tokenizer
+spec:
+  backoffLimit: 0
+  template:
+    metadata:
+      labels:
+        app: nanogpt-tokenizer
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: tokenizer
+          image: {{ .Values.tokenizerImage }}
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          env:
+            - name: TOKENIZER_ENCODING
+              value: {{ .Values.tokenizer.encoding | quote }}
+            - name: SHARD_SIZE
+              value: {{ .Values.tokenizer.shardSize | quote }}
+            - name: VALIDATION_FRACTION
+              value: {{ .Values.tokenizer.validationFraction | quote }}
+            - name: SHARD_PREFIX
+              value: {{ .Values.tokenizer.shardPrefix | quote }}
+            - name: PARTITION_KEY
+              value: {{ include "nanogpt.partitionKey" . | quote }}
+          volumeMounts:
+            - name: shared
+              mountPath: /data
+              subPath: data
+      volumes:
+        - name: shared
+          persistentVolumeClaim:
+            claimName: nanogpt-shared

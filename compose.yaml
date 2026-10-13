@@ -10,7 +10,7 @@ services:
   trainer:
     image: train-gpt:latest
     build:
-      context: ./build-nanogpt
+      context: ./nanogpt
       dockerfile: Dockerfile
     volumes:
       - ./data:/data:ro
