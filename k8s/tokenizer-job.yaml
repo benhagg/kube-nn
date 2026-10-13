@@ -1,0 +1,21 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: nanogpt-tokenize
+spec:
+  backoffLimit: 0
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: tokenizer
+          image: train-gpt-tokenizer:latest
+          imagePullPolicy: IfNotPresent
+          volumeMounts:
+            - name: shared
+              mountPath: /data
+              subPath: data
+      volumes:
+        - name: shared
+          persistentVolumeClaim:
+            claimName: nanogpt-shared

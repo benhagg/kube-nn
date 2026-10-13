@@ -6,6 +6,7 @@ set -eu
 runtime_node_rank="${CONTAINER_NODE_RANK:-}"
 runtime_master_addr="${TRAIN_MASTER_ADDR:-}"
 runtime_master_port="${TRAIN_MASTER_PORT:-}"
+runtime_nnodes="${NNODES:-}"
 
 # StatefulSet pod names end in their stable ordinal (for example, -0, -1). Set runtime node env var to the stateful set ordinal.
 if [ -z "$runtime_node_rank" ] && [ -n "${POD_NAME:-}" ]; then
@@ -19,8 +20,9 @@ set +a
 NODE_RANK="${runtime_node_rank:-$NODE_RANK}"
 MASTER_ADDR="${runtime_master_addr:-$MASTER_ADDR}"
 MASTER_PORT="${runtime_master_port:-$MASTER_PORT}"
+NNODES="${runtime_nnodes:-1}"
 
-export NODE_RANK MASTER_ADDR MASTER_PORT
+export NODE_RANK MASTER_ADDR MASTER_PORT NNODES
 OMP_NUM_THREADS="${OMP_NUM_THREADS:-${TORCH_NUM_THREADS:-1}}"
 MKL_NUM_THREADS="${MKL_NUM_THREADS:-${TORCH_NUM_THREADS:-1}}"
 export OMP_NUM_THREADS MKL_NUM_THREADS

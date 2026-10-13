@@ -1,0 +1,9 @@
+# Worker count is used for both the StatefulSet size and torchrun's NNODES.
+nnodes: 1
+
+trainerImage: train-gpt:latest
+imagePullPolicy: IfNotPresent
+
+storage:
+  accessMode: ReadWriteOnce
+  size: 100Gi

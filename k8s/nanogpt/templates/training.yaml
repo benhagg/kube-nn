@@ -1,0 +1,98 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: nanogpt-workers
+  labels:
+    app: nanogpt-worker
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector:
+    app: nanogpt-worker
+  ports:
+    - name: rendezvous
+      port: 29500
+      targetPort: 29500
+      protocol: TCP
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: nanogpt-shared
+spec:
+  accessModes:
+    - {{ .Values.storage.accessMode }}
+  resources:
+    requests:
+      storage: {{ .Values.storage.size }}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: nanogpt-worker
+spec:
+  serviceName: nanogpt-workers
+  replicas: {{ .Values.nnodes }}
+  podManagementPolicy: Parallel
+  selector:
+    matchLabels:
+      app: nanogpt-worker
+  template:
+    metadata:
+      labels:
+        app: nanogpt-worker
+    spec:
+      initContainers:
+        - name: wait-for-training-shards
+          image: {{ .Values.trainerImage }}
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              while :; do
+                has_train=0
+                has_val=0
+                for shard in /data/*train*.npy; do
+                  if [ -f "$shard" ]; then has_train=1; break; fi
+                done
+                for shard in /data/*val*.npy; do
+                  if [ -f "$shard" ]; then has_val=1; break; fi
+                done
+                if [ "$has_train" -eq 1 ] && [ "$has_val" -eq 1 ]; then break; fi
+                echo 'Waiting for train and validation .npy shards in /data'
+                sleep 10
+              done
+          volumeMounts:
+            - name: shared
+              mountPath: /data
+              subPath: data
+      containers:
+        - name: trainer
+          image: {{ .Values.trainerImage }}
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: TRAIN_MASTER_ADDR
+              value: nanogpt-worker-0.nanogpt-workers
+            - name: TRAIN_MASTER_PORT
+              value: "29500"
+            - name: NNODES
+              value: {{ .Values.nnodes | quote }}
+          ports:
+            - name: rendezvous
+              containerPort: 29500
+              protocol: TCP
+          volumeMounts:
+            - name: shared
+              mountPath: /data
+              subPath: data
+            - name: shared
+              mountPath: /checkpoints
+              subPath: checkpoints
+      volumes:
+        - name: shared
+          persistentVolumeClaim:
+            claimName: nanogpt-shared
