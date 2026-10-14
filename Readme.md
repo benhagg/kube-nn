@@ -21,7 +21,7 @@ kubectl get pods -A
 Build images and load them into Minikube:
 
 ```powershell
-docker compose build
+docker compose build --no-cache
 minikube image load train-gpt:latest
 minikube image load train-gpt-tokenizer:latest
 minikube image load nanogpt-monitor:latest
@@ -46,49 +46,23 @@ An out-of-memory condition caused the kernel to SIGKILL one training process (-9
 
 ![OOM sigkill](images/image-3.png)
 
-### Worker resource monitor
 
-The chart includes a small monitor that requests worker CPU and memory usage from
-the Kubernetes Metrics API every second. It keeps the most recent hour in memory
-and graphs each worker Pod in a browser.
+Increase memory per container or decrease `NPROC_PER_NODE` and `NNODES`
 
-Build and load its image with the other local images:
-
-```powershell
-```
-
-After the Helm upgrade, open the dashboard:
+## Metrics Monitor Container
 
 ```powershell
 kubectl port-forward service/nanogpt-monitor 8080:8080
 ```
 
 Visit `http://localhost:8080`. The monitor needs the Minikube `metrics-server`
-addon running because it reads its Metrics API.
+addon running because it reads its Metrics API. It polls worker CPU and memory
+every second; global rank 0 publishes loss, step duration, and throughput after
+each optimizer step.
 
-![run kube config with helm](image-2.png)
-
-View Logs
+### View Logs from training containers
 
 bash
 ```
 kubectl logs -f -l app=nanogpt-worker -c trainer --prefix=true --max-log-requests=10
 ```
-
-
-### Run distributed locally
-
-Minikube can simulate a distributed run with multiple worker Pods on its single Kubernetes node. Set `nnodes: 2` (or more) in `k8s/nanogpt/values.yaml`, then rerun the Helm command below; Helm sets the same count for the StatefulSet and `torchrun`. The Pods share Minikube's CPU and memory, so keep the count within the resources allocated at startup.
-
-Install or update the training and tokenizer resources with Helm:
-
-```powershell
-helm upgrade --install nanogpt .\k8s\nanogpt --set-string tokenizer.imageHash=$tokenizerImageHash
-```
-
-Helm creates a tokenizer Job for each image and tokenizer configuration. After rebuilding the tokenizer image, inspect its ID and pass the new value on the Helm command so Helm creates a new Job automatically. Changing tokenizer settings also creates a new Job. The trainer waits only until it finds a `*_train_*.npy` file in `/data`; it does not wait for a particular tokenizer run or shard layout. To scale the training workers, change `nnodes` in `k8s/nanogpt/values.yaml` and run the Helm command again with the same image hash.
-
-
-```
-
-The tokenizer writes train and validation `.npy` shards to the PVC. The training Pod waits for those files, then starts `torchrun`.

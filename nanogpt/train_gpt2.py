@@ -2,8 +2,11 @@ import os
 import math
 import time
 import inspect
+import json
 from contextlib import nullcontext
 from dataclasses import dataclass
+from urllib.error import URLError
+from urllib.request import Request, urlopen
 
 from dotenv import load_dotenv
 
@@ -249,6 +252,34 @@ else:
 
 device_type = "cpu"
 
+# Only rank zero publishes one aggregate sample per optimizer step. Publishing is
+# best-effort so an unavailable monitor never blocks or ends training.
+training_metrics_url = os.getenv("TRAINING_METRICS_URL", "")
+
+
+def publish_training_metrics(step, loss, duration_seconds, throughput_tokens_per_second):
+    if not training_metrics_url:
+        return
+    payload = json.dumps(
+        {
+            "step": step,
+            "loss": loss,
+            "durationSeconds": duration_seconds,
+            "throughputTokensPerSecond": throughput_tokens_per_second,
+        }
+    ).encode()
+    request = Request(
+        training_metrics_url,
+        data=payload,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urlopen(request, timeout=0.25):
+            pass
+    except (OSError, URLError):
+        pass
+
 torch.manual_seed(1337)
 torch.set_num_threads(int(os.getenv("TORCH_NUM_THREADS", os.getenv("OMP_NUM_THREADS", "1"))))
 try:
@@ -364,6 +395,7 @@ for step in range(max_steps):
         print(f"step {step:5d} | loss: {loss_accum.item():.6f} | lr {lr:.4e} | norm: {norm:.4f} | dt: {dt*1000:.2f}ms | tok/sec: {tokens_per_sec:.2f}")
         with open(log_file, "a") as f:
             f.write(f"{step} train {loss_accum.item():.6f}\n")
+        publish_training_metrics(step, loss_accum.item(), dt, tokens_per_sec)
 
 if master_process:
     checkpoint_path = os.path.join(log_dir, "model_final.pt")

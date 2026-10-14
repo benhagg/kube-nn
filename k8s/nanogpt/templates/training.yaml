@@ -74,13 +74,17 @@ spec:
               value: "29500"
             - name: NNODES
               value: {{ .Values.nnodes | quote }}
+            {{- if .Values.monitoring.enabled }}
+            - name: TRAINING_METRICS_URL
+              value: http://nanogpt-monitor:{{ .Values.monitoring.port }}/api/training
+            {{- end }}
           resources:
             requests:
               cpu: "2"
-              memory: "2Gi"
+              memory: "3Gi"
             limits:
-              cpu: "2"
-              memory: "4Gi"
+              cpu: "3"
+              memory: "6Gi"
           ports:
             - name: rendezvous
               containerPort: 29500

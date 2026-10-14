@@ -28,6 +28,7 @@ METRICS_URL = (
 )
 
 samples: dict[str, deque[dict[str, float]]] = defaultdict(lambda: deque(maxlen=RETENTION_SAMPLES))
+training_samples: deque[dict[str, float]] = deque(maxlen=RETENTION_SAMPLES)
 samples_lock = Lock()
 last_error: str | None = None
 
@@ -87,8 +88,12 @@ DASHBOARD = r"""<!doctype html>
 <body><h1>nanoGPT worker resources</h1><p class="muted">Samples every second from the Kubernetes Metrics API. Retained in this monitor Pod's memory.</p><p id="status">Loading…</p>
 <section><h2>CPU by worker (millicores)</h2><canvas id="cpu" width="1000" height="260"></canvas></section>
 <section><h2>Memory by worker (MiB)</h2><canvas id="memory" width="1000" height="260"></canvas></section>
+<section><h2>Training loss by step</h2><canvas id="loss" width="1000" height="260"></canvas></section>
+<section><h2>Step duration by step (ms)</h2><canvas id="duration" width="1000" height="260"></canvas></section>
+<section><h2>Training throughput by step (tokens/second)</h2><canvas id="throughput" width="1000" height="260"></canvas></section>
 <script>
 const colors=['#62d9ff','#ffbd59','#ad7cff','#69db7c','#ff7eb6','#f06595'];
+const formatValue=v=>v>=100?Math.round(v):v>=10?v.toFixed(1):v.toFixed(2);
 function draw(id, workers, key) {
   const c=document.getElementById(id),x=c.getContext('2d'),w=c.width,h=c.height,left=50,bottom=38,right=8,top=28;
   x.clearRect(0,0,w,h); const series=Object.values(workers), points=series.flat();
@@ -96,12 +101,22 @@ function draw(id, workers, key) {
   const minT=Math.min(...points.map(a=>a.timestamp)), maxT=Math.max(...points.map(a=>a.timestamp)), maxV=Math.max(1,...points.map(a=>a[key]));
   const plotW=w-left-right,plotH=h-top-bottom,pxFor=t=>left+plotW*(maxT===minT?.5:(t-minT)/(maxT-minT)),pyFor=v=>top+plotH-(plotH*v/maxV);
   x.strokeStyle='#53606e';x.beginPath();x.moveTo(left,top);x.lineTo(left,h-bottom);x.lineTo(w-right,h-bottom);x.stroke();
-  x.fillStyle='#aab7c4';x.textAlign='right';x.fillText(Math.ceil(maxV),left-6,top+5);x.fillText('0',left-6,h-bottom+5);
+  Array.from({length:5},(_,i)=>maxV*i/4).forEach(v=>{const py=pyFor(v);x.strokeStyle='#2d3946';x.beginPath();x.moveTo(left,py);x.lineTo(w-right,py);x.stroke();x.fillStyle='#aab7c4';x.textAlign='right';x.fillText(formatValue(v),left-6,py+4)});
   const ticks=maxT===minT?[minT]:Array.from({length:5},(_,i)=>minT+(maxT-minT)*i/4);
   ticks.forEach(t=>{const px=pxFor(t);x.strokeStyle='#2d3946';x.beginPath();x.moveTo(px,top);x.lineTo(px,h-bottom);x.stroke();x.fillStyle='#aab7c4';x.textAlign='center';x.fillText(new Date(t*1000).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit'}),px,h-12)});
-  Object.entries(workers).forEach(([name,values],i)=>{x.strokeStyle=colors[i%colors.length];x.lineWidth=2;x.beginPath();values.forEach((a,j)=>{const px=pxFor(a.timestamp),py=pyFor(a[key]);j?x.lineTo(px,py):x.moveTo(px,py)});x.stroke();x.fillStyle=colors[i%colors.length];x.textAlign='left';x.fillText(name,left+i*170,18)})
+  Object.entries(workers).forEach(([name,values],i)=>{x.strokeStyle=colors[i%colors.length];x.lineWidth=2;x.beginPath();values.forEach((a,j)=>{const px=pxFor(a.timestamp),py=pyFor(a[key]);j?x.lineTo(px,py):x.moveTo(px,py)});x.stroke();x.fillStyle=colors[i%colors.length];x.fillRect(left+i*170,10,10,10);x.fillStyle='#edf2f7';x.textAlign='left';x.fillText(name,left+14+i*170,19)})
 }
-async function refresh(){try{const r=await fetch('/api/samples');const d=await r.json();document.getElementById('status').textContent=d.error?'Metrics API: '+d.error:`${Object.keys(d.workers).length} worker Pods; updated ${new Date(d.now*1000).toLocaleTimeString()}`;draw('cpu',d.workers,'cpuMillicores');draw('memory',d.workers,'memoryMiB')}catch(e){document.getElementById('status').textContent=e}}
+function drawStep(id, values, key) {
+  const c=document.getElementById(id),x=c.getContext('2d'),w=c.width,h=c.height,left=50,bottom=38,right=8,top=12;
+  x.clearRect(0,0,w,h);if(!values.length){x.fillStyle='#aab7c4';x.fillText('No training samples yet.',left,h/2);return}
+  const minS=Math.min(...values.map(a=>a.step)),maxS=Math.max(...values.map(a=>a.step)),maxV=Math.max(1,...values.map(a=>a[key]));
+  const plotW=w-left-right,plotH=h-top-bottom,pxFor=s=>left+plotW*(maxS===minS?.5:(s-minS)/(maxS-minS)),pyFor=v=>top+plotH-(plotH*v/maxV);
+  x.strokeStyle='#53606e';x.beginPath();x.moveTo(left,top);x.lineTo(left,h-bottom);x.lineTo(w-right,h-bottom);x.stroke();Array.from({length:5},(_,i)=>maxV*i/4).forEach(v=>{const py=pyFor(v);x.strokeStyle='#2d3946';x.beginPath();x.moveTo(left,py);x.lineTo(w-right,py);x.stroke();x.fillStyle='#aab7c4';x.textAlign='right';x.fillText(formatValue(v),left-6,py+4)});
+  const ticks=maxS===minS?[minS]:Array.from({length:5},(_,i)=>minS+(maxS-minS)*i/4);
+  ticks.forEach(s=>{const px=pxFor(s);x.strokeStyle='#2d3946';x.beginPath();x.moveTo(px,top);x.lineTo(px,h-bottom);x.stroke();x.fillStyle='#aab7c4';x.textAlign='center';x.fillText(`step ${Math.round(s)}`,px,h-12)});
+  x.strokeStyle='#62d9ff';x.lineWidth=2;x.beginPath();values.forEach((a,i)=>{const px=pxFor(a.step),py=pyFor(a[key]);i?x.lineTo(px,py):x.moveTo(px,py)});x.stroke();
+}
+async function refresh(){try{const r=await fetch('/api/samples');const d=await r.json();document.getElementById('status').textContent=d.error?'Metrics API: '+d.error:`${Object.keys(d.workers).length} worker Pods; updated ${new Date(d.now*1000).toLocaleTimeString()}`;draw('cpu',d.workers,'cpuMillicores');draw('memory',d.workers,'memoryMiB');drawStep('loss',d.training,'loss');drawStep('duration',d.training,'durationMilliseconds');drawStep('throughput',d.training,'throughputTokensPerSecond')}catch(e){document.getElementById('status').textContent=e}}
 refresh();setInterval(refresh,1000);
 </script></body></html>"""
 
@@ -110,7 +125,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         if self.path == "/api/samples":
             with samples_lock:
-                body = json.dumps({"now": time.time(), "error": last_error, "workers": {name: list(values) for name, values in samples.items()}}).encode()
+                body = json.dumps({"now": time.time(), "error": last_error, "workers": {name: list(values) for name, values in samples.items()}, "training": list(training_samples)}).encode()
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
         elif self.path == "/":
@@ -123,6 +138,27 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
+
+    def do_POST(self) -> None:
+        if self.path != "/api/training":
+            self.send_error(404)
+            return
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+            payload = json.loads(self.rfile.read(length))
+            sample = {
+                "step": int(payload["step"]),
+                "loss": float(payload["loss"]),
+                "durationMilliseconds": float(payload["durationSeconds"]) * 1000,
+                "throughputTokensPerSecond": float(payload["throughputTokensPerSecond"]),
+            }
+        except (TypeError, ValueError, KeyError, json.JSONDecodeError):
+            self.send_error(400, "Expected numeric training metrics JSON")
+            return
+        with samples_lock:
+            training_samples.append(sample)
+        self.send_response(204)
+        self.end_headers()
 
     def log_message(self, *_args: object) -> None:
         pass
