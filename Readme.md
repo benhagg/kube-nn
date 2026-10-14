@@ -58,7 +58,8 @@ kubectl port-forward service/nanogpt-monitor 8080:8080
 Visit `http://localhost:8080`. The monitor needs the Minikube `metrics-server`
 addon running because it reads its Metrics API. It polls worker CPU and memory
 every second; global rank 0 publishes loss, step duration, and throughput after
-each optimizer step.
+each optimizer step. Worker CPU and memory chart ceilings come from
+`workerResources.limits` in `k8s/nanogpt/values.yaml`.
 
 ## Checkpoint and resume training
 

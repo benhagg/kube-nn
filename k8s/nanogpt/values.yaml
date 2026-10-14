@@ -5,6 +5,16 @@ trainerImage: train-gpt:latest
 tokenizerImage: train-gpt-tokenizer:latest
 imagePullPolicy: IfNotPresent
 
+# Per worker Pod resources. The monitor uses these limits as the CPU and memory
+# chart ceilings.
+workerResources:
+  requests:
+    cpu: "2"
+    memory: 3Gi
+  limits:
+    cpu: "3"
+    memory: 6Gi
+
 monitoring:
   enabled: true
   image: nanogpt-monitor:latest

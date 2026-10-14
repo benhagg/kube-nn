@@ -83,8 +83,8 @@ spec:
               cpu: "2"
               memory: "3Gi"
             limits:
-              cpu: "3"
-              memory: "6Gi"
+              cpu: {{ .Values.workerResources.limits.cpu | quote }}
+              memory: {{ .Values.workerResources.limits.memory | quote }}
           ports:
             - name: rendezvous
               containerPort: 29500

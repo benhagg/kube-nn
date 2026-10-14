@@ -51,6 +51,10 @@ def quantity_to_mebibytes(value: str) -> float:
     return float(value) / (1024**2)
 
 
+WORKER_CPU_LIMIT_MILLICORES = quantity_to_cpu_millicores(os.environ.get("WORKER_CPU_LIMIT", "0"))
+WORKER_MEMORY_LIMIT_MIB = quantity_to_mebibytes(os.environ.get("WORKER_MEMORY_LIMIT", "0"))
+
+
 def poll_metrics() -> None:
     global last_error
     while True:
@@ -94,11 +98,11 @@ DASHBOARD = r"""<!doctype html>
 <script>
 const colors=['#62d9ff','#ffbd59','#ad7cff','#69db7c','#ff7eb6','#f06595'];
 const formatValue=v=>v>=100?Math.round(v):v>=10?v.toFixed(1):v.toFixed(2);
-function draw(id, workers, key) {
+function draw(id, workers, key, limit) {
   const c=document.getElementById(id),x=c.getContext('2d'),w=c.width,h=c.height,left=50,bottom=38,right=8,top=28;
   x.clearRect(0,0,w,h); const series=Object.values(workers), points=series.flat();
   if(!points.length){x.fillStyle='#aab7c4';x.fillText('No worker samples yet.',left,h/2);return}
-  const minT=Math.min(...points.map(a=>a.timestamp)), maxT=Math.max(...points.map(a=>a.timestamp)), maxV=Math.max(1,...points.map(a=>a[key]));
+  const minT=Math.min(...points.map(a=>a.timestamp)), maxT=Math.max(...points.map(a=>a.timestamp)), maxV=limit>0?limit:Math.max(1,...points.map(a=>a[key]));
   const plotW=w-left-right,plotH=h-top-bottom,pxFor=t=>left+plotW*(maxT===minT?.5:(t-minT)/(maxT-minT)),pyFor=v=>top+plotH-(plotH*v/maxV);
   x.strokeStyle='#53606e';x.beginPath();x.moveTo(left,top);x.lineTo(left,h-bottom);x.lineTo(w-right,h-bottom);x.stroke();
   Array.from({length:5},(_,i)=>maxV*i/4).forEach(v=>{const py=pyFor(v);x.strokeStyle='#2d3946';x.beginPath();x.moveTo(left,py);x.lineTo(w-right,py);x.stroke();x.fillStyle='#aab7c4';x.textAlign='right';x.fillText(formatValue(v),left-6,py+4)});
@@ -116,7 +120,7 @@ function drawStep(id, values, key) {
   ticks.forEach(s=>{const px=pxFor(s);x.strokeStyle='#2d3946';x.beginPath();x.moveTo(px,top);x.lineTo(px,h-bottom);x.stroke();x.fillStyle='#aab7c4';x.textAlign='center';x.fillText(`step ${Math.round(s)}`,px,h-12)});
   x.strokeStyle='#62d9ff';x.lineWidth=2;x.beginPath();values.forEach((a,i)=>{const px=pxFor(a.step),py=pyFor(a[key]);i?x.lineTo(px,py):x.moveTo(px,py)});x.stroke();
 }
-async function refresh(){try{const r=await fetch('/api/samples');const d=await r.json();document.getElementById('status').textContent=d.error?'Metrics API: '+d.error:`${Object.keys(d.workers).length} worker Pods; updated ${new Date(d.now*1000).toLocaleTimeString()}`;draw('cpu',d.workers,'cpuMillicores');draw('memory',d.workers,'memoryMiB');drawStep('loss',d.training,'loss');drawStep('duration',d.training,'durationMilliseconds');drawStep('throughput',d.training,'throughputTokensPerSecond')}catch(e){document.getElementById('status').textContent=e}}
+async function refresh(){try{const r=await fetch('/api/samples');const d=await r.json();document.getElementById('status').textContent=d.error?'Metrics API: '+d.error:`${Object.keys(d.workers).length} worker Pods; updated ${new Date(d.now*1000).toLocaleTimeString()}`;draw('cpu',d.workers,'cpuMillicores',d.limits.cpuMillicores);draw('memory',d.workers,'memoryMiB',d.limits.memoryMiB);drawStep('loss',d.training,'loss');drawStep('duration',d.training,'durationMilliseconds');drawStep('throughput',d.training,'throughputTokensPerSecond')}catch(e){document.getElementById('status').textContent=e}}
 refresh();setInterval(refresh,1000);
 </script></body></html>"""
 
@@ -125,7 +129,16 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         if self.path == "/api/samples":
             with samples_lock:
-                body = json.dumps({"now": time.time(), "error": last_error, "workers": {name: list(values) for name, values in samples.items()}, "training": list(training_samples)}).encode()
+                body = json.dumps({
+                    "now": time.time(),
+                    "error": last_error,
+                    "workers": {name: list(values) for name, values in samples.items()},
+                    "training": list(training_samples),
+                    "limits": {
+                        "cpuMillicores": WORKER_CPU_LIMIT_MILLICORES,
+                        "memoryMiB": WORKER_MEMORY_LIMIT_MIB,
+                    },
+                }).encode()
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
         elif self.path == "/":

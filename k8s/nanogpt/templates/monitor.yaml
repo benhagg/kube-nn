@@ -53,6 +53,10 @@ spec:
               value: {{ .Values.monitoring.retentionSamples | quote }}
             - name: POLL_INTERVAL_SECONDS
               value: "1"
+            - name: WORKER_CPU_LIMIT
+              value: {{ .Values.workerResources.limits.cpu | quote }}
+            - name: WORKER_MEMORY_LIMIT
+              value: {{ .Values.workerResources.limits.memory | quote }}
           ports:
             - name: http
               containerPort: {{ .Values.monitoring.port }}
