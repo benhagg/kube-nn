@@ -36,6 +36,14 @@ helm upgrade --install nanogpt .\k8s\nanogpt\
 
 ![run kube config with helm](image-2.png)
 
+View Logs
+
+bash
+```
+kubectl logs -f -l app=nanogpt-worker -c trainer --prefix=true --max-log-requests=10
+```
+
+
 ### Run distributed locally
 
 Minikube can simulate a distributed run with multiple worker Pods on its single Kubernetes node. Set `nnodes: 2` (or more) in `k8s/nanogpt/values.yaml`, then rerun the Helm command below; Helm sets the same count for the StatefulSet and `torchrun`. The Pods share Minikube's CPU and memory, so keep the count within the resources allocated at startup.

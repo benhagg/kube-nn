@@ -13,6 +13,7 @@ tokenizer:
   validationFraction: 0.1
   shardPrefix: dataset
 
+# PVC
 storage:
   accessMode: ReadWriteOnce
   size: 100Gi

@@ -1,0 +1,11 @@
+{
+  "editor.formatOnSave": false,
+  "editor.formatOnPaste": false,
+  "editor.formatOnType": false,
+  "files.associations": {
+    "k8s/nanogpt/templates/*.yaml": "helm"
+  },
+  "[helm]": {
+    "editor.formatOnSave": false
+  }
+}
