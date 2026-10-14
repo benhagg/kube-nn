@@ -3,6 +3,7 @@ import math
 import time
 import inspect
 import json
+import random
 from contextlib import nullcontext
 from dataclasses import dataclass
 from urllib.error import URLError
@@ -219,6 +220,17 @@ class DataLoaderLite:
             self.current_position = B * T * self.process_rank
         return x, y
 
+    def state_dict(self):
+        return {
+            "current_shard": self.current_shard,
+            "current_position": self.current_position,
+        }
+
+    def load_state_dict(self, state):
+        self.current_shard = int(state["current_shard"])
+        self.current_position = int(state["current_position"])
+        self.tokens = load_tokens(self.shards[self.current_shard])
+
 # -----------------------------------------------------------------------------
 # simple launch:
 # python train_gpt2.py
@@ -349,14 +361,96 @@ def get_lr(it):
 # optimize!
 optimizer = raw_model.configure_optimizers(weight_decay=0.1, learning_rate=6e-4, device_type=device_type)
 
-# create the log directory we will write checkpoints to and log to
+# Create the directory shared by all workers for logs and checkpoints.
 log_dir = os.getenv("LOG_DIR", "log")
 os.makedirs(log_dir, exist_ok=True)
-log_file = os.path.join(log_dir, f"log.txt")
-with open(log_file, "w") as f: # open for writing to clear the file
-    pass
+checkpoint_steps = int(os.getenv("CHECKPOINT_STEPS", "0"))
+resume_checkpoint = os.getenv("RESUME_CHECKPOINT", "").strip()
 
-for step in range(max_steps):
+
+def atomic_torch_save(value, path):
+    temporary_path = f"{path}.tmp-rank-{ddp_rank}"
+    torch.save(value, temporary_path)
+    os.replace(temporary_path, path)
+
+
+def save_checkpoint(next_step):
+    """Save a checkpoint after a complete optimizer step on every DDP rank."""
+    checkpoint_dir = os.path.join(log_dir, f"checkpoint-{next_step:08d}")
+    os.makedirs(checkpoint_dir, exist_ok=True)
+
+    # The model and AdamW state are identical on every DDP rank. Each rank does
+    # need its own data cursor and RNG state to resume the same data stream.
+    rank_state = {
+        "data_loader": train_loader.state_dict(),
+        "torch_rng_state": torch.get_rng_state(),
+        "numpy_rng_state": np.random.get_state(),
+        "python_rng_state": random.getstate(),
+    }
+    atomic_torch_save(rank_state, os.path.join(checkpoint_dir, f"rank-{ddp_rank:04d}.pt"))
+    if ddp:
+        dist.barrier()
+
+    if master_process:
+        atomic_torch_save(
+            {
+                "model": raw_model.state_dict(),
+                "optimizer": optimizer.state_dict(),
+                "next_step": next_step,
+                "model_config": vars(model_config),
+                "world_size": ddp_world_size,
+                "grad_accum_steps": grad_accum_steps,
+            },
+            os.path.join(checkpoint_dir, "training.pt"),
+        )
+        latest_path = os.path.join(log_dir, "latest_checkpoint")
+        temporary_latest_path = f"{latest_path}.tmp"
+        with open(temporary_latest_path, "w", encoding="utf-8") as latest_file:
+            latest_file.write(checkpoint_dir)
+        os.replace(temporary_latest_path, latest_path)
+        print(f"saved checkpoint at step {next_step}: {checkpoint_dir}")
+
+    if ddp:
+        dist.barrier()
+
+
+def load_checkpoint(checkpoint_dir):
+    training_state = torch.load(
+        os.path.join(checkpoint_dir, "training.pt"), map_location="cpu", weights_only=False
+    )
+    if training_state["world_size"] != ddp_world_size:
+        raise ValueError(
+            f"checkpoint world size {training_state['world_size']} does not match current world size {ddp_world_size}"
+        )
+    raw_model.load_state_dict(training_state["model"])
+    optimizer.load_state_dict(training_state["optimizer"])
+
+    rank_state = torch.load(
+        os.path.join(checkpoint_dir, f"rank-{ddp_rank:04d}.pt"), map_location="cpu", weights_only=False
+    )
+    train_loader.load_state_dict(rank_state["data_loader"])
+    torch.set_rng_state(rank_state["torch_rng_state"])
+    np.random.set_state(rank_state["numpy_rng_state"])
+    random.setstate(rank_state["python_rng_state"])
+    if ddp:
+        dist.barrier()
+    return int(training_state["next_step"])
+
+
+if resume_checkpoint == "latest":
+    with open(os.path.join(log_dir, "latest_checkpoint"), encoding="utf-8") as latest_file:
+        resume_checkpoint = latest_file.read().strip()
+
+start_step = load_checkpoint(resume_checkpoint) if resume_checkpoint else 0
+if master_process and resume_checkpoint:
+    print(f"resumed checkpoint {resume_checkpoint} at step {start_step}")
+
+log_file = os.path.join(log_dir, "log.txt")
+if start_step == 0:
+    with open(log_file, "w"):
+        pass
+
+for step in range(start_step, max_steps):
     t0 = time.time()
 
     # do one step of the optimization
@@ -396,14 +490,13 @@ for step in range(max_steps):
         with open(log_file, "a") as f:
             f.write(f"{step} train {loss_accum.item():.6f}\n")
         publish_training_metrics(step, loss_accum.item(), dt, tokens_per_sec)
+    if checkpoint_steps > 0 and (step + 1) % checkpoint_steps == 0:
+        save_checkpoint(step + 1)
 
-if master_process:
-    checkpoint_path = os.path.join(log_dir, "model_final.pt")
-    torch.save({
-        "model": raw_model.state_dict(),
-        "config": raw_model.config,
-        "step": max_steps - 1,
-    }, checkpoint_path)
+# Always finish with a complete resumable checkpoint, even when MAX_STEPS is not
+# an exact multiple of CHECKPOINT_STEPS.
+if start_step < max_steps and (checkpoint_steps <= 0 or max_steps % checkpoint_steps != 0):
+    save_checkpoint(max_steps)
 
 if ddp:
     destroy_process_group()

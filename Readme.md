@@ -60,6 +60,23 @@ addon running because it reads its Metrics API. It polls worker CPU and memory
 every second; global rank 0 publishes loss, step duration, and throughput after
 each optimizer step.
 
+## Checkpoint and resume training
+
+The trainer saves a complete checkpoint every `CHECKPOINT_STEPS` completed
+optimizer steps under `/checkpoints/checkpoint-<step>`. Each checkpoint contains
+model weights, AdamW state, the next training step, every rank's data position,
+and each rank's random-number state. These files are on the shared PVC.
+
+To resume from the most recently completed checkpoint, set the following before
+building the trainer image and restarting the workers:
+
+```dotenv
+RESUME_CHECKPOINT=latest
+```
+
+Leave `RESUME_CHECKPOINT` empty to start a new run. Resume requires the same
+number of distributed processes because each rank restores its own data cursor.
+
 ### View Logs from training containers
 
 bash
