@@ -1,0 +1,78 @@
+{{- if .Values.monitoring.enabled }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: nanogpt-monitor
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: nanogpt-monitor
+rules:
+  - apiGroups: ["metrics.k8s.io"]
+    resources: ["pods"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: nanogpt-monitor
+subjects:
+  - kind: ServiceAccount
+    name: nanogpt-monitor
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: nanogpt-monitor
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nanogpt-monitor
+  labels:
+    app: nanogpt-monitor
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nanogpt-monitor
+  template:
+    metadata:
+      labels:
+        app: nanogpt-monitor
+    spec:
+      serviceAccountName: nanogpt-monitor
+      containers:
+        - name: monitor
+          image: {{ .Values.monitoring.image }}
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          env:
+            - name: PORT
+              value: {{ .Values.monitoring.port | quote }}
+            - name: RETENTION_SAMPLES
+              value: {{ .Values.monitoring.retentionSamples | quote }}
+            - name: POLL_INTERVAL_SECONDS
+              value: "1"
+          ports:
+            - name: http
+              containerPort: {{ .Values.monitoring.port }}
+          resources:
+            requests:
+              cpu: 25m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 128Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nanogpt-monitor
+spec:
+  selector:
+    app: nanogpt-monitor
+  ports:
+    - name: http
+      port: {{ .Values.monitoring.port }}
+      targetPort: http
+{{- end }}

@@ -18,12 +18,13 @@ kubectl get pods -A
 ```
 ![output of running get pods](images/image-1.png)
 
-Build both images and load them into Minikube:
+Build images and load them into Minikube:
 
 ```powershell
 docker compose build
 minikube image load train-gpt:latest
 minikube image load train-gpt-tokenizer:latest
+minikube image load nanogpt-monitor:latest
 ```
 ![shows all images loaded into minikube](images/image.png)
 
@@ -33,6 +34,37 @@ bash
 ```
 helm upgrade --install nanogpt .\k8s\nanogpt\
 ```
+
+View worker container logs
+
+bash
+```
+k logs -f -l app=nanogpt-worker
+```
+
+An out-of-memory condition caused the kernel to SIGKILL one training process (-9). Its local torchrun launcher terminated its sibling processes with SIGTERM (-15). The other nodes then detected the failed distributed training group and their launchers shut down their remaining local processes.
+
+![OOM sigkill](images/image-3.png)
+
+### Worker resource monitor
+
+The chart includes a small monitor that requests worker CPU and memory usage from
+the Kubernetes Metrics API every second. It keeps the most recent hour in memory
+and graphs each worker Pod in a browser.
+
+Build and load its image with the other local images:
+
+```powershell
+```
+
+After the Helm upgrade, open the dashboard:
+
+```powershell
+kubectl port-forward service/nanogpt-monitor 8080:8080
+```
+
+Visit `http://localhost:8080`. The monitor needs the Minikube `metrics-server`
+addon running because it reads its Metrics API.
 
 ![run kube config with helm](image-2.png)
 
@@ -56,12 +88,7 @@ helm upgrade --install nanogpt .\k8s\nanogpt --set-string tokenizer.imageHash=$t
 
 Helm creates a tokenizer Job for each image and tokenizer configuration. After rebuilding the tokenizer image, inspect its ID and pass the new value on the Helm command so Helm creates a new Job automatically. Changing tokenizer settings also creates a new Job. The trainer waits only until it finds a `*_train_*.npy` file in `/data`; it does not wait for a particular tokenizer run or shard layout. To scale the training workers, change `nnodes` in `k8s/nanogpt/values.yaml` and run the Helm command again with the same image hash.
 
-Watch the Pods and logs:
 
-```powershell
-kubectl get pods -w
-kubectl logs -f -l app=nanogpt-tokenizer
-kubectl logs -f nanogpt-worker-0 -c trainer
 ```
 
 The tokenizer writes train and validation `.npy` shards to the PVC. The training Pod waits for those files, then starts `torchrun`.

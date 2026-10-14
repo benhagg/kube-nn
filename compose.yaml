@@ -15,3 +15,9 @@ services:
     volumes:
       - ./data:/data:ro
       - ./checkpoints:/checkpoints
+
+  monitor:
+    image: nanogpt-monitor:latest
+    build:
+      context: ./monitor
+      dockerfile: Dockerfile
