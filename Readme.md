@@ -6,7 +6,7 @@ Simulate a distributed training environment with a separate tokenizer Job and CP
 
 Install Docker Desktop, Minikube, `kubectl`, and Helm, then start a local cluster:
 
-This starts a local Minikube cluster. Run Helm and `kubectl` commands from your terminal; you do not need to enter the Minikube node.
+This starts a local Minikube cluster. Run Helm and `kubectl` commands from your terminal
 
 ```powershell
 minikube start --driver=docker --cpus=8 --memory=16384
@@ -42,13 +42,22 @@ bash
 ```
 k logs -f -l app=nanogpt-worker
 ```
+# Data Parallelism (DP)
+git commit `0878a04de6fe2aadde46fb08a19973223bcd97b1`
+At this stage this project is using Data Parallelism
 
+### OOM Error
 An out-of-memory condition caused the kernel to SIGKILL one training process (-9). Its local torchrun launcher terminated its sibling processes with SIGTERM (-15). The other nodes then detected the failed distributed training group and their launchers shut down their remaining local processes.
 
 ![OOM sigkill](images/image-3.png)
 
 
-Increase memory per container or decrease `NPROC_PER_NODE` and `NNODES`
+Increase memory per container or decrease `NPROC_PER_NODE`. I did both, as you can see below the memory is within the 6GB allowance I am giving each pod. 
+
+
+![alt text](images/image-4.png)
+
+During real distributed training your VRAM and `NPROC_PER_NODE` would have a hard limit you would have to decrease model size `N_LAYER`, `C` or microbatch dimensions `B`, `T` to fit it into VRAM.
 
 ## Metrics Monitor Container
 
