@@ -13,6 +13,8 @@ load_dotenv(os.path.join(os.path.dirname(__file__), ".env"), override=False)
 # Set CPU library defaults before importing PyTorch. Override these in the
 # environment or .env when tuning thread use for a particular machine.
 cpu_threads = os.getenv("TORCH_NUM_THREADS", "1")
+node_rank = os.getenv("NODE_RANK", "0")
+ddp_rank = os.getenv("RANK", "0")
 os.environ.setdefault("OMP_NUM_THREADS", cpu_threads)
 os.environ.setdefault("MKL_NUM_THREADS", cpu_threads)
 
@@ -120,6 +122,7 @@ class GPT(nn.Module):
             torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
 
     def forward(self, idx, targets=None):
+        print(f"node ({node_rank}, {ddp_rank}): forward pass", flush=True)
         # idx is of shape (B, T)
         B, T = idx.size()
         assert T <= self.config.block_size, f"Cannot forward sequence of length {T}, block size is only {self.config.block_size}"

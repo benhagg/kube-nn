@@ -1,5 +1,5 @@
 # Worker count is used for both the StatefulSet size and torchrun's NNODES.
-nnodes: 1
+nnodes: 4
 
 trainerImage: train-gpt:latest
 tokenizerImage: train-gpt-tokenizer:latest

@@ -9,7 +9,7 @@ Install Docker Desktop, Minikube, `kubectl`, and Helm, then start a local cluste
 This starts a local Minikube cluster. Run Helm and `kubectl` commands from your terminal; you do not need to enter the Minikube node.
 
 ```powershell
-minikube start --driver=docker --cpus=4 --memory=8192
+minikube start --driver=docker --cpus=8 --memory=16384
 ```
 Once the container starts you can view all pods
 
@@ -22,13 +22,19 @@ Build both images and load them into Minikube:
 
 ```powershell
 docker compose build
-$tokenizerImageHash = docker image inspect train-gpt-tokenizer:latest --format '{{.Id}}'
 minikube image load train-gpt:latest
 minikube image load train-gpt-tokenizer:latest
 ```
 ![shows all images loaded into minikube](images/image.png)
 
+Run the kubernetes config with the helm chart
 
+bash
+```
+helm upgrade --install nanogpt .\k8s\nanogpt\
+```
+
+![run kube config with helm](image-2.png)
 
 ### Run distributed locally
 
