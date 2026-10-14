@@ -1,8 +1,8 @@
 # Worker count is used for both the StatefulSet size and torchrun's NNODES.
 nnodes: 2
 
-trainerImage: train-gpt:latest
-tokenizerImage: train-gpt-tokenizer:latest
+trainerImage: trainer:latest
+tokenizerImage: tokenizer:latest
 imagePullPolicy: IfNotPresent
 
 # Per worker Pod resources. The monitor uses these limits as the CPU and memory
@@ -17,7 +17,7 @@ workerResources:
 
 monitoring:
   enabled: true
-  image: nanogpt-monitor:latest
+  image: monitor:latest
   port: 8080
   # One in-memory sample per second. 3600 retains one hour of history.
   retentionSamples: 3600

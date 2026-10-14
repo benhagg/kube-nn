@@ -20,11 +20,12 @@ kubectl get pods -A
 
 Build images and load them into Minikube:
 
-```powershell
+```bash
 docker compose build --no-cache
-minikube image load train-gpt:latest
-minikube image load train-gpt-tokenizer:latest
-minikube image load nanogpt-monitor:latest
+minikube image load trainer:latest
+minikube image load tokenizer:latest
+minikube image load monitor:latest
+minikube image ls
 ```
 ![shows all images loaded into minikube](images/image.png)
 

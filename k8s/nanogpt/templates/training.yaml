@@ -76,12 +76,12 @@ spec:
               value: {{ .Values.nnodes | quote }}
             {{- if .Values.monitoring.enabled }}
             - name: TRAINING_METRICS_URL
-              value: http://nanogpt-monitor:{{ .Values.monitoring.port }}/api/training
+              value: http://monitor:{{ .Values.monitoring.port }}/api/training
             {{- end }}
           resources:
             requests:
-              cpu: "2"
-              memory: "3Gi"
+              cpu: {{ .Values.workerResources.requests.cpu | quote }}
+              memory: {{ .Values.workerResources.requests.memory | quote }}
             limits:
               cpu: {{ .Values.workerResources.limits.cpu | quote }}
               memory: {{ .Values.workerResources.limits.memory | quote }}
