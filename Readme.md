@@ -22,6 +22,7 @@ Build both images and load them into Minikube:
 
 ```powershell
 docker compose build
+$tokenizerImageHash = docker image inspect train-gpt-tokenizer:latest --format '{{.Id}}'
 minikube image load train-gpt:latest
 minikube image load train-gpt-tokenizer:latest
 ```
@@ -36,10 +37,10 @@ Minikube can simulate a distributed run with multiple worker Pods on its single 
 Install or update the training and tokenizer resources with Helm:
 
 ```powershell
-helm upgrade --install nanogpt .\k8s\nanogpt
+helm upgrade --install nanogpt .\k8s\nanogpt --set-string tokenizer.imageHash=$tokenizerImageHash
 ```
 
-Helm creates one tokenizer Job for each partition configuration and reuses it on upgrades with unchanged settings. Changing tokenizer settings or incrementing `tokenizer.inputRevision` creates a new Job and partition; the tokenizer skips work only when the source, settings, and existing shards match that partition. To scale the training workers, change `nnodes` in `k8s/nanogpt/values.yaml` and run the Helm command again.
+Helm creates a tokenizer Job for each image and tokenizer configuration. After rebuilding the tokenizer image, inspect its ID and pass the new value on the Helm command so Helm creates a new Job automatically. Changing tokenizer settings also creates a new Job. The trainer waits only until it finds a `*_train_*.npy` file in `/data`; it does not wait for a particular tokenizer run or shard layout. To scale the training workers, change `nnodes` in `k8s/nanogpt/values.yaml` and run the Helm command again with the same image hash.
 
 Watch the Pods and logs:
 

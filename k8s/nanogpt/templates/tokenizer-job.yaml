@@ -1,7 +1,7 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: {{ printf "%s-tokenize-%s" .Release.Name (printf "%s|%s" (include "nanogpt.partitionKey" .) .Values.imagePullPolicy | sha256sum | trunc 12) | trunc 63 | trimSuffix "-" }}
+  name: {{ printf "%s-tokenize-%s" .Release.Name (printf "%s|%s|%s|%d|%v|%s" .Values.tokenizerImage .Values.tokenizer.imageHash .Values.tokenizer.encoding (int .Values.tokenizer.shardSize) .Values.tokenizer.validationFraction .Values.tokenizer.shardPrefix | sha256sum | trunc 12) | trunc 63 | trimSuffix "-" }}
   labels:
     app: nanogpt-tokenizer
 spec:
@@ -25,8 +25,6 @@ spec:
               value: {{ .Values.tokenizer.validationFraction | quote }}
             - name: SHARD_PREFIX
               value: {{ .Values.tokenizer.shardPrefix | quote }}
-            - name: PARTITION_KEY
-              value: {{ include "nanogpt.partitionKey" . | quote }}
           volumeMounts:
             - name: shared
               mountPath: /data

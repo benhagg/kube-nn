@@ -43,18 +43,16 @@ spec:
         app: nanogpt-worker
     spec:
       initContainers:
-        - name: wait-for-training-shards
+        - name: wait-for-data
           image: {{ .Values.trainerImage }}
           imagePullPolicy: {{ .Values.imagePullPolicy }}
-          env:
-            - name: PARTITION_KEY
-              value: {{ include "nanogpt.partitionKey" . | quote }}
           command: ["/bin/sh", "-c"]
           args:
             - |
               while :; do
-                if [ -f /data/.partition.json ] && python -c 'import json, os, sys; sys.exit(0 if json.load(open("/data/.partition.json", encoding="utf-8")).get("partition_key") == os.environ["PARTITION_KEY"] else 1)'; then break; fi
-                echo "Waiting for tokenizer data partition $PARTITION_KEY in /data"
+                set -- /data/*_train_*.npy
+                if [ -f "$1" ]; then break; fi
+                echo "Waiting for training data in /data"
                 sleep 10
               done
           volumeMounts:

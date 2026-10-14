@@ -6,12 +6,12 @@ tokenizerImage: train-gpt-tokenizer:latest
 imagePullPolicy: IfNotPresent
 
 tokenizer:
+  # Built tokenizer image ID; changes the Job name when the image is rebuilt.
+  imageHash: ""
   encoding: gpt2
   shardSize: 100000
   validationFraction: 0.1
   shardPrefix: dataset
-  # Increment this when replacing input.txt in the tokenizer image.
-  inputRevision: "1"
 
 storage:
   accessMode: ReadWriteOnce
